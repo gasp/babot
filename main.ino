@@ -68,9 +68,18 @@ unsigned long ballFoundTime = 0;
 enum BaBotMode {
   ON,
   OFF,
-  ASSEMBLY
+  ASSEMBLY,
+  JUMP
 };
 BaBotMode mode = ON;  // Initial state
+
+// Jump state variables
+bool jumpTriggered = false;
+unsigned long jumpStartTime = 0;
+const unsigned long JUMP_UP_DURATION = 100; // Duration to move up (ms)
+const unsigned long JUMP_DOWN_DURATION = 80; // Duration to move down (ms)
+const float JUMP_HEIGHT_UP = 10.0; // Height to raise platform (mm)
+const float JUMP_HEIGHT_DOWN = -8.0; // Height to lower platform (mm)
 
 // === ENUM FOR PRESS TYPES ===
 enum ButtonPress {
@@ -189,6 +198,15 @@ void loop() {
 
         movePlatform(outputX, outputY, PLATE_HEIGHT);
 
+        // Check if plate is stabilized flat and trigger jump
+        if (!jumpTriggered && abs(outputX) < 0.5 && abs(outputY) < 0.5 && 
+            abs(centerX) < 0.3 && abs(centerY) < 0.3) {
+          // Plate is stable and flat, trigger jump
+          mode = JUMP;
+          jumpTriggered = true;
+          jumpStartTime = millis();
+        }
+
       } else {
         if (ballWasOnPlate && millis() - ballLostTime < 1000) {
           // hold last
@@ -201,6 +219,30 @@ void loop() {
           setpointX = setpointY = 0;
           movePlatform(0, 0, PLATE_HEIGHT);
         }
+      }
+      break;
+
+    case JUMP:
+      blinkLED(100);
+      digitalWrite(LED_PIN, HIGH);
+      
+      unsigned long jumpElapsed = millis() - jumpStartTime;
+      
+      if (jumpElapsed < JUMP_UP_DURATION) {
+        // Move platform up quickly while keeping it flat
+        movePlatform(0, 0, PLATE_HEIGHT + JUMP_HEIGHT_UP);
+      } else if (jumpElapsed < JUMP_UP_DURATION + JUMP_DOWN_DURATION) {
+        // Move platform down quickly - ball will launch upward
+        movePlatform(0, 0, PLATE_HEIGHT + JUMP_HEIGHT_DOWN);
+      } else if (jumpElapsed < JUMP_UP_DURATION + JUMP_DOWN_DURATION + 200) {
+        // Return to neutral position
+        movePlatform(0, 0, PLATE_HEIGHT);
+      } else {
+        // Jump complete, return to stabilization mode
+        mode = ON;
+        integralX = integralY = 0;
+        lastErrorX = lastErrorY = 0;
+        skipCounter = 2;
       }
       break;
 
